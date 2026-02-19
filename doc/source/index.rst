@@ -1,10 +1,13 @@
 Tenacity
 ========
 .. image:: https://img.shields.io/pypi/v/tenacity.svg
-    :target: https://pypi.python.org/pypi/tenacity
+    :target: https://pypi.org/project/tenacity
 
-.. image:: https://circleci.com/gh/jd/tenacity.svg?style=svg
-    :target: https://circleci.com/gh/jd/tenacity
+.. image:: https://img.shields.io/pypi/pyversions/tenacity.svg
+    :target: https://pypi.org/project/tenacity
+
+.. image:: https://github.com/jd/tenacity/actions/workflows/ci.yaml/badge.svg?branch=main
+    :target: https://github.com/jd/tenacity/actions/workflows/ci.yaml
 
 .. image:: https://img.shields.io/endpoint.svg?url=https://api.mergify.com/badges/jd/tenacity&style=flat
    :target: https://mergify.io
@@ -594,14 +597,14 @@ in retry strategies like ``retry_if_result``. This can be done accessing the
 Async and retry
 ~~~~~~~~~~~~~~~
 
-Finally, ``retry`` works also on asyncio, Trio, and Tornado (>= 4.5) coroutines.
+Finally, ``retry`` works also on asyncio, Trio, and Tornado coroutines.
 Sleeps are done asynchronously too.
 
 .. code-block:: python
 
     @retry
-    async def my_asyncio_function(loop):
-        await loop.getaddrinfo('8.8.8.8', 53)
+    async def my_asyncio_function():
+        await asyncio.getaddrinfo('8.8.8.8', 53)
 
 .. code-block:: python
 
@@ -612,17 +615,16 @@ Sleeps are done asynchronously too.
 .. code-block:: python
 
     @retry
-    @tornado.gen.coroutine
-    def my_async_tornado_function(http_client, url):
-        yield http_client.fetch(url)
+    async def my_async_tornado_function(http_client, url):
+        await http_client.fetch(url)
 
-You can even use alternative event loops such as `curio` by passing the correct sleep function:
+You can use alternative event loops by passing the correct sleep function:
 
 .. code-block:: python
 
-    @retry(sleep=curio.sleep)
-    async def my_async_curio_function():
-        await asks.get('https://example.org')
+    @retry(sleep=trio.sleep)
+    async def my_async_trio_function_with_sleep():
+        ...
 
 Contribute
 ----------
@@ -635,5 +637,12 @@ Contribute
    expected.
 #. Add a `changelog <#Changelogs>`_
 #. Make the docs better (or more detailed, or more easier to read, or ...)
+
+Running the test suite locally::
+
+    uv run poe check    # run tests + build docs
+    uv run poe lint     # run ruff linter
+    uv run poe mypy     # run type checker
+    uv run poe all      # run everything
 
 .. _`the repository`: https://github.com/jd/tenacity

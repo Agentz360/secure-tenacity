@@ -15,11 +15,9 @@
 
 import unittest
 
-from tenacity import RetryError, retry, stop_after_attempt
-from tenacity import tornadoweb
+from tornado import gen, testing
 
-from tornado import gen
-from tornado import testing
+from tenacity import RetryError, retry, stop_after_attempt, tornadoweb
 
 from .test_tenacity import NoIOErrorAfterCount
 
@@ -38,7 +36,7 @@ def _retryable_coroutine_with_2_attempts(thing):
     thing.go()
 
 
-class TestTornado(testing.AsyncTestCase):  # type: ignore[misc]
+class TestTornado(testing.AsyncTestCase):
     @testing.gen_test
     def test_retry(self):
         assert gen.is_coroutine_function(_retryable_coroutine)
