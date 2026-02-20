@@ -80,8 +80,7 @@ class retry_if_exception(retry_base):
             if exception is None:
                 raise RuntimeError("outcome failed but the exception is None")
             return self.predicate(exception)
-        else:
-            return False
+        return False
 
 
 class retry_if_exception_type(retry_if_exception):
@@ -173,8 +172,7 @@ class retry_if_result(retry_base):
 
         if not retry_state.outcome.failed:
             return self.predicate(retry_state.outcome.result())
-        else:
-            return False
+        return False
 
 
 class retry_if_not_result(retry_base):
@@ -189,8 +187,7 @@ class retry_if_not_result(retry_base):
 
         if not retry_state.outcome.failed:
             return not self.predicate(retry_state.outcome.result())
-        else:
-            return False
+        return False
 
 
 class retry_if_exception_message(retry_if_exception):
@@ -199,7 +196,7 @@ class retry_if_exception_message(retry_if_exception):
     def __init__(
         self,
         message: str | None = None,
-        match: None | str | typing.Pattern[str] = None,
+        match: None | str | re.Pattern[str] = None,
     ) -> None:
         if message and match:
             raise TypeError(
@@ -234,7 +231,7 @@ class retry_if_not_exception_message(retry_if_exception_message):
     def __init__(
         self,
         message: str | None = None,
-        match: None | str | typing.Pattern[str] = None,
+        match: None | str | re.Pattern[str] = None,
     ) -> None:
         super().__init__(message, match)
         # invert predicate
