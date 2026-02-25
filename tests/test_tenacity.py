@@ -31,6 +31,7 @@ from typeguard import check_type
 
 import tenacity
 from tenacity import RetryCallState, RetryError, Retrying, retry
+from tenacity.retry import retry_all, retry_any
 
 _unset = object()
 
@@ -743,6 +744,60 @@ class TestRetryConditions(unittest.TestCase):
         self.assertFalse(r(tenacity.Future.construct(1, 2.2, False)))
         self.assertFalse(r(tenacity.Future.construct(1, 42, True)))
 
+    def test_retry_or_with_plain_function(self) -> None:
+        """Plain callables can be composed with retry_base via |."""
+
+        def my_retry(retry_state: tenacity.RetryCallState) -> bool:
+            return retry_state.outcome is not None and not retry_state.outcome.failed
+
+        # retry_base | plain_callable (exercises __or__ fallback)
+        retry = tenacity.retry_if_exception_type(Exception) | my_retry
+        retry_state = make_retry_state(
+            1, 1.0, last_result=tenacity.Future.construct(1, "ok", False)
+        )
+        self.assertTrue(retry(retry_state))
+
+        # plain_callable | retry_base (exercises __ror__ via reflection)
+        retry2 = my_retry | tenacity.retry_if_exception_type(Exception)
+        self.assertTrue(retry2(retry_state))
+
+    def test_retry_and_with_plain_function(self) -> None:
+        """Plain callables can be composed with retry_base via &."""
+
+        def my_retry(retry_state: tenacity.RetryCallState) -> bool:
+            return True
+
+        # retry_base & plain_callable (exercises __and__ fallback)
+        retry = tenacity.retry_if_result(lambda x: x == 1) & my_retry
+        retry_state = make_retry_state(
+            1, 1.0, last_result=tenacity.Future.construct(1, 1, False)
+        )
+        self.assertTrue(retry(retry_state))
+
+        # plain_callable & retry_base (exercises __rand__ via reflection)
+        retry2 = my_retry & tenacity.retry_if_result(lambda x: x == 1)
+        self.assertTrue(retry2(retry_state))
+
+    def test_retry_or_coalesces(self) -> None:
+        """Multiple | operations flatten into a single retry_any."""
+        a = tenacity.retry_if_exception_type(IOError)
+        b = tenacity.retry_if_exception_type(OSError)
+        c = tenacity.retry_if_exception_type(ValueError)
+
+        combined = a | b | c
+        self.assertIsInstance(combined, retry_any)
+        self.assertEqual(len(combined.retries), 3)
+
+    def test_retry_and_coalesces(self) -> None:
+        """Multiple & operations flatten into a single retry_all."""
+        a = tenacity.retry_if_result(lambda x: x == 1)
+        b = tenacity.retry_if_result(lambda x: x > 0)
+        c = tenacity.retry_if_result(lambda x: x < 10)
+
+        combined = a & b & c
+        self.assertIsInstance(combined, retry_all)
+        self.assertEqual(len(combined.retries), 3)
+
     def _raise_try_again(self) -> None:
         self._attempts += 1
         if self._attempts < 3:
@@ -1352,6 +1407,81 @@ class TestDecoratorWrapper(unittest.TestCase):
                 self.assertEqual(_retryable_test_with_stop.retry.statistics, {})
             else:
                 self.fail("RetryError should have been raised after 1 attempt")
+
+
+class TestStatisticsKeys:
+    def test_delay_since_first_attempt_available_on_first_attempt(self) -> None:
+        """delay_since_first_attempt should be in statistics from the start."""
+
+        @retry(
+            stop=tenacity.stop_after_attempt(3),
+            retry=tenacity.retry_if_result(lambda x: x is None),
+        )
+        def succeeds_first_try() -> bool:
+            assert "delay_since_first_attempt" in succeeds_first_try.statistics
+            assert succeeds_first_try.statistics["delay_since_first_attempt"] == 0
+            return True
+
+        succeeds_first_try()
+        assert succeeds_first_try.statistics["delay_since_first_attempt"] == 0
+
+
+class TestEnabled:
+    def test_enabled_false_skips_retry(self) -> None:
+        """When enabled=False, the function is called directly without retrying."""
+        call_count = 0
+
+        @retry(enabled=False, stop=tenacity.stop_after_attempt(3))
+        def always_fails() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise ValueError("fail")
+
+        with pytest.raises(ValueError, match="fail"):
+            always_fails()
+        assert call_count == 1
+
+    def test_enabled_false_preserves_attributes(self) -> None:
+        """When enabled=False, .retry, .retry_with, .statistics are still available."""
+
+        @retry(enabled=False, stop=tenacity.stop_after_attempt(3))
+        def my_func() -> str:
+            return "ok"
+
+        assert hasattr(my_func, "retry")
+        assert hasattr(my_func, "retry_with")
+        assert hasattr(my_func, "statistics")
+        assert my_func() == "ok"
+
+    def test_enabled_false_via_retry_with(self) -> None:
+        """retry_with(enabled=False) disables retrying."""
+        call_count = 0
+
+        @retry(stop=tenacity.stop_after_attempt(3))
+        def always_fails() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise ValueError("fail")
+
+        disabled = always_fails.retry_with(enabled=False)
+        with pytest.raises(ValueError, match="fail"):
+            disabled()
+        assert call_count == 1
+
+    def test_enabled_true_retries_normally(self) -> None:
+        """When enabled=True (default), retrying works as usual."""
+        call_count = 0
+
+        @retry(enabled=True, stop=tenacity.stop_after_attempt(3), reraise=True)
+        def fails_twice() -> bool:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ValueError("fail")
+            return True
+
+        assert fails_twice() is True
+        assert call_count == 3
 
 
 class TestRetryWith:

@@ -510,6 +510,52 @@ Here's an example with a custom ``before_sleep`` function:
         pass
 
 
+Common Patterns
+~~~~~~~~~~~~~~~
+
+**Running setup code between retries** (e.g. reconnecting):
+
+.. testcode::
+
+    def reconnect(retry_state):
+        print("Reconnecting before next attempt...")
+
+    @retry(stop=stop_after_attempt(3), before_sleep=reconnect)
+    def send_data():
+        raise MyException("connection lost")
+
+    try:
+        send_data()
+    except RetryError:
+        pass
+
+.. testoutput::
+   :hide:
+
+   ...
+
+The ``before_sleep`` callback runs after a failed attempt and before sleeping,
+making it ideal for re-establishing connections, refreshing tokens, or any
+other setup that needs to happen before the next attempt.
+
+**Accessing the attempt number inside the function** using the iterator API:
+
+.. testcode::
+
+    from tenacity import Retrying
+
+    for attempt in Retrying(stop=stop_after_attempt(3)):
+        with attempt:
+            print(f"Attempt {attempt.retry_state.attempt_number}")
+            if attempt.retry_state.attempt_number < 3:
+                raise MyException("not yet")
+
+.. testoutput::
+   :hide:
+
+   ...
+
+
 Changing Arguments at Run Time
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -571,6 +617,38 @@ statistics should be read from the function `statistics` attribute.
    :hide:
 
    ...
+
+Disabling Retries
+~~~~~~~~~~~~~~~~~
+
+You can disable retrying entirely by passing ``enabled=False``. When disabled,
+the decorated function is called directly without any retry logic. This is
+useful during development or testing when you want fast feedback on failures:
+
+.. testcode::
+
+    import os
+
+    @retry(
+        enabled=os.getenv("ENABLE_RETRIES", "1") != "0",
+        stop=stop_after_attempt(5),
+        wait=wait_fixed(1),
+    )
+    def call_api():
+        pass  # your code here
+
+    call_api()
+
+You can also use ``retry_with`` to disable retries on a per-call basis:
+
+.. testcode::
+
+    @retry(stop=stop_after_attempt(5))
+    def call_api():
+        pass  # your code here
+
+    # In tests:
+    call_api.retry_with(enabled=False)()
 
 Retrying code block
 ~~~~~~~~~~~~~~~~~~~
@@ -654,6 +732,37 @@ You can use alternative event loops by passing the correct sleep function:
     @retry(sleep=trio.sleep)
     async def my_async_trio_function_with_sleep():
         ...
+
+Generators
+~~~~~~~~~~
+
+``retry`` does not support generator or async generator functions. Decorating a
+generator with ``@retry`` will not retry on exceptions raised during iteration
+— the decorator wraps the function call itself, which for generators simply
+returns a generator object without executing any of the body.
+
+Also note that generators passed *as arguments* to a retried function will be
+exhausted after the first attempt and will not be rewound automatically on
+retry. If you need to pass a generator as an argument, consider passing a
+factory function instead:
+
+.. code-block:: python
+
+    # Bad: generator will be exhausted after the first attempt
+    @retry
+    def process(items):
+        for item in items:
+            do_work(item)
+
+    process(my_generator())  # retries will see an empty generator
+
+    # Good: pass a factory so a fresh generator is created on each attempt
+    @retry
+    def process(items_factory):
+        for item in items_factory():
+            do_work(item)
+
+    process(my_generator)  # each retry gets a fresh generator
 
 Contribute
 ----------
