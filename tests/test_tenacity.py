@@ -21,9 +21,6 @@ import re
 import time
 import typing
 import unittest
-import warnings
-from contextlib import contextmanager
-from copy import copy
 from fractions import Fraction
 from unittest import mock
 
@@ -914,7 +911,7 @@ class NoNameErrorCauseAfterCount:
             try:
                 self.go2()
             except NameError as e:
-                raise OSError() from e
+                raise OSError from e
 
         return True
 
@@ -939,7 +936,7 @@ class NoIOErrorCauseAfterCount:
             try:
                 self.go2()
             except OSError as e:
-                raise NameError() from e
+                raise NameError from e
 
         return True
 
@@ -1990,18 +1987,6 @@ class TestRetryTyping(unittest.TestCase):
         check_type(with_constructor_result, str)
 
 
-@contextmanager
-def reports_deprecation_warning() -> typing.Generator[None, None, None]:
-    __tracebackhide__ = True
-    oldfilters = copy(warnings.filters)
-    warnings.simplefilter("always")
-    try:
-        with pytest.warns(DeprecationWarning):
-            yield
-    finally:
-        warnings.filters = oldfilters
-
-
 class TestMockingSleep:
     RETRY_ARGS = {
         "wait": tenacity.wait_fixed(0.1),
@@ -2009,7 +1994,7 @@ class TestMockingSleep:
     }
 
     def _fail(self) -> None:
-        raise NotImplementedError()
+        raise NotImplementedError
 
     @retry(**RETRY_ARGS)  # type: ignore[call-overload, untyped-decorator]
     def _decorated_fail(self) -> None:
